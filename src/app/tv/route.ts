@@ -415,7 +415,7 @@ export async function GET() {
     + '  </div>\n'
     + '  <div class="yt-container">\n'
     + '    <iframe\n'
-    + '      src="https://www.youtube-nocookie.com/embed/iEpJwprxDdk?autoplay=1&mute=1&controls=1&rel=0&modestbranding=1&playsinline=1"\n'
+    + '      src="https://www.youtube-nocookie.com/embed/iEpJwprxDdk?autoplay=1&mute=0&controls=1&rel=0&modestbranding=1&playsinline=1"\n'
     + '      allow="autoplay; encrypted-media"\n'
     + '      allowfullscreen\n'
     + '    ></iframe>\n'
