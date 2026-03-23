@@ -1,6 +1,7 @@
 // GET /tv - Worldmonitor-styled financial dashboard for Samsung Tizen TV browsers
 // Dark terminal aesthetic, monospace font, sharp corners, pulsing status dots.
 // Auto-refreshes every 5 minutes. ES5-compatible runtime JS.
+// Includes YouTube live stream embed in top-left panel.
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -235,18 +236,58 @@ export async function GET() {
     + '  border:1px solid #2a2a4a;\n'
     + '}\n'
 
-    // Grid layout
-    + '.grid {\n'
+    // Main grid: 2 rows
+    + '.main-grid {\n'
     + '  display:-webkit-flex; display:flex;\n'
-    + '  -webkit-flex-wrap:wrap; flex-wrap:wrap;\n'
+    + '  -webkit-flex-direction:column; flex-direction:column;\n'
     + '  height:calc(100vh - 40px);\n'
     + '  padding:8px;\n'
     + '  gap:8px;\n'
     + '}\n'
+
+    // Top row: YouTube (60%) + Gainers (40%)
+    + '.top-row {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  gap:8px;\n'
+    + '  height:55%;\n'
+    + '  -webkit-flex-shrink:0; flex-shrink:0;\n'
+    + '}\n'
+    + '.top-row .panel-yt {\n'
+    + '  -webkit-flex:0 0 60%; flex:0 0 60%;\n'
+    + '  max-width:60%;\n'
+    + '}\n'
+    + '.top-row .panel-side {\n'
+    + '  -webkit-flex:1 1 40%; flex:1 1 40%;\n'
+    + '}\n'
+
+    // Bottom row: 3 equal panels
+    + '.bottom-row {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  gap:8px;\n'
+    + '  -webkit-flex:1; flex:1;\n'
+    + '  min-height:0;\n'
+    + '}\n'
+    + '.bottom-row .panel {\n'
+    + '  -webkit-flex:1 1 0; flex:1 1 0;\n'
+    + '  min-width:0;\n'
+    + '}\n'
+
+    // Panel base
     + '.panel {\n'
-    + '  -webkit-flex:1 1 calc(50% - 8px); flex:1 1 calc(50% - 8px);\n'
-    + '  min-width:300px;\n'
-    + '  max-height:calc(50vh - 28px);\n'
+    + '  background:#141414;\n'
+    + '  border:1px solid #2a2a2a;\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-flex-direction:column; flex-direction:column;\n'
+    + '  overflow:hidden;\n'
+    + '}\n'
+    + '.panel-yt {\n'
+    + '  background:#141414;\n'
+    + '  border:1px solid #2a2a2a;\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-flex-direction:column; flex-direction:column;\n'
+    + '  overflow:hidden;\n'
+    + '}\n'
+    + '.panel-side {\n'
     + '  background:#141414;\n'
     + '  border:1px solid #2a2a2a;\n'
     + '  display:-webkit-flex; display:flex;\n'
@@ -277,6 +318,19 @@ export async function GET() {
     + '  -webkit-flex:1; flex:1;\n'
     + '  overflow-y:auto;\n'
     + '  padding:0;\n'
+    + '}\n'
+
+    // YouTube iframe container
+    + '.yt-container {\n'
+    + '  -webkit-flex:1; flex:1;\n'
+    + '  position:relative;\n'
+    + '  background:#000;\n'
+    + '}\n'
+    + '.yt-container iframe {\n'
+    + '  position:absolute;\n'
+    + '  top:0; left:0;\n'
+    + '  width:100%; height:100%;\n'
+    + '  border:0;\n'
     + '}\n'
 
     // Scrollbar styling
@@ -347,11 +401,29 @@ export async function GET() {
     + '  </div>\n'
     + '</div>\n\n'
 
-    // Grid
-    + '<div class="grid">\n\n'
+    // Main grid
+    + '<div class="main-grid">\n\n'
 
-    // TOP GAINERS
-    + '<div class="panel">\n'
+    // === TOP ROW ===
+    + '<div class="top-row">\n\n'
+
+    // YouTube Live Stream
+    + '<div class="panel-yt">\n'
+    + '  <div class="panel-header">\n'
+    + '    <span class="panel-label" style="color:#ef4444"><span class="status-dot" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,0.5);margin-right:6px;vertical-align:middle"></span>LIVE STREAM</span>\n'
+    + '    <span class="panel-count">YOUTUBE</span>\n'
+    + '  </div>\n'
+    + '  <div class="yt-container">\n'
+    + '    <iframe\n'
+    + '      src="https://www.youtube-nocookie.com/embed/iEpJwprxDdk?autoplay=1&mute=1&controls=1&rel=0&modestbranding=1&playsinline=1"\n'
+    + '      allow="autoplay; encrypted-media"\n'
+    + '      allowfullscreen\n'
+    + '    ></iframe>\n'
+    + '  </div>\n'
+    + '</div>\n\n'
+
+    // TOP GAINERS (right side of top row)
+    + '<div class="panel-side">\n'
     + '  <div class="panel-header">\n'
     + '    <span class="panel-label" style="color:#4ade80">TOP GAINERS</span>\n'
     + '    <span class="panel-count">' + gainers.length + ' ITEMS</span>\n'
@@ -363,6 +435,11 @@ export async function GET() {
     + '    </table>\n'
     + '  </div>\n'
     + '</div>\n\n'
+
+    + '</div>\n\n'
+
+    // === BOTTOM ROW ===
+    + '<div class="bottom-row">\n\n'
 
     // TOP LOSERS
     + '<div class="panel">\n'
@@ -404,6 +481,8 @@ export async function GET() {
     + divsHtml
     + '    </table>\n'
     + '  </div>\n'
+    + '</div>\n\n'
+
     + '</div>\n\n'
 
     + '</div>\n\n'
