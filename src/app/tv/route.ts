@@ -1,6 +1,6 @@
-// GET /tv - Lightweight HTML dashboard for Samsung Tizen TV browsers (2019+)
-// Returns raw HTML with no React hydration, no modern JS syntax.
-// Auto-refreshes every 5 minutes. Dark theme, large fonts for TV viewing.
+// GET /tv - Worldmonitor-styled financial dashboard for Samsung Tizen TV browsers
+// Dark terminal aesthetic, monospace font, sharp corners, pulsing status dots.
+// Auto-refreshes every 5 minutes. ES5-compatible runtime JS.
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,6 +63,7 @@ interface Dividend {
   exDate: string;
   amount: number;
   frequency: string;
+  yield?: number;
 }
 
 export async function GET() {
@@ -80,10 +81,12 @@ export async function GET() {
 
   if (!data) {
     return new Response(
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="30">' +
-      '<title>Monitor - TV</title></head>' +
-      '<body style="background:#020617;color:#ef4444;font-family:sans-serif;padding:80px;font-size:32px;text-align:center">' +
-      '<p>Failed to load data. Retrying in 30s...</p></body></html>',
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="30">'
+      + '<title>WORLD MONITOR</title></head>'
+      + '<body style="background:#0a0a0a;color:#ef4444;font-family:\'SF Mono\',\'Monaco\',\'Cascadia Code\',\'Fira Code\',monospace;padding:80px;font-size:18px;text-align:center">'
+      + '<p style="color:#4ade80">WORLD MONITOR</p>'
+      + '<p style="margin-top:20px;color:#ef4444">CONNECTION LOST // RETRYING IN 30s...</p>'
+      + '</body></html>',
       { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );
   }
@@ -91,130 +94,337 @@ export async function GET() {
   var ipos: IPO[] = data.ipos || [];
   var movers: Mover[] = data.movers || [];
   var dividends: Dividend[] = data.dividends || [];
-  var lastUpdated = data.lastUpdated
-    ? new Date(data.lastUpdated).toLocaleString('en-US', { timeZone: 'America/New_York' })
-    : 'Unknown';
 
   var gainers = movers.filter(function(m) { return m.direction === 'up'; }).slice(0, 15);
   var losers = movers.filter(function(m) { return m.direction === 'down'; }).slice(0, 15);
 
   // Build mover rows
-  function moverRow(m: Mover): string {
-    var cls = m.direction === 'up' ? 'up' : 'down';
+  function moverRow(m: Mover, isGainer: boolean): string {
+    var arrow = isGainer ? '&#x25B2;' : '&#x25BC;';
+    var colorCls = isGainer ? 'g' : 'r';
     return '<tr>'
-      + '<td><span class="sym">' + esc(m.symbol) + '</span><br><span class="nm">' + esc((m.name || '').substring(0, 28)) + '</span></td>'
+      + '<td class="sym">' + esc(m.symbol) + '</td>'
+      + '<td class="nm">' + esc((m.name || '').substring(0, 24)) + '</td>'
+      + '<td class="' + colorCls + '">' + arrow + ' ' + fmtPct(m.changePercent) + '</td>'
       + '<td>' + fmtPrice(m.price) + '</td>'
-      + '<td class="' + cls + '">' + fmtPct(m.changePercent) + '</td>'
-      + '<td class="vol">' + fmtVol(m.volume) + '</td>'
-      + '<td class="cap">' + fmtCap(m.marketCap) + '</td>'
+      + '<td class="dim">' + fmtVol(m.volume) + '</td>'
       + '</tr>';
   }
 
   function ipoRow(ipo: IPO): string {
-    var sc = 'st-' + (ipo.status || 'filed');
+    var statusCls = 'badge';
+    if (ipo.status === 'priced') statusCls += ' badge-g';
+    else if (ipo.status === 'expected') statusCls += ' badge-y';
+    else if (ipo.status === 'withdrawn') statusCls += ' badge-r';
+    else statusCls += ' badge-d';
     return '<tr>'
-      + '<td><span class="sym">' + esc(ipo.symbol || '-') + '</span><br><span class="nm">' + esc((ipo.name || '').substring(0, 28)) + '</span></td>'
+      + '<td class="sym">' + esc(ipo.symbol || '-') + '</td>'
+      + '<td class="nm">' + esc((ipo.name || '').substring(0, 22)) + '</td>'
       + '<td>' + esc(ipo.date || '-') + '</td>'
-      + '<td>' + (ipo.price != null ? fmtPrice(ipo.price) : '-') + '</td>'
-      + '<td class="vol">' + esc((ipo.exchange || '-').substring(0, 18)) + '</td>'
-      + '<td class="' + sc + '">' + esc(ipo.status || '-') + '</td>'
+      + '<td><span class="' + statusCls + '">' + esc((ipo.status || '-').toUpperCase()) + '</span></td>'
       + '</tr>';
   }
 
-  var gainersHtml = gainers.map(moverRow).join('');
-  var losersHtml = losers.map(moverRow).join('');
-  var iposHtml = ipos.slice(0, 15).map(ipoRow).join('');
-
-  var divsHtml = '';
-  if (dividends.length > 0) {
-    divsHtml = '<div class="sec">'
-      + '<div class="stl" style="color:#fbbf24">&#x1F4B0; Dividends</div>'
-      + '<table><tr><th>Symbol</th><th>Ex-Date</th><th>Amount</th><th>Freq</th></tr>';
-    for (var i = 0; i < Math.min(dividends.length, 15); i++) {
-      var d = dividends[i];
-      divsHtml += '<tr>'
-        + '<td><span class="sym">' + esc(d.symbol) + '</span><br><span class="nm">' + esc((d.name || '').substring(0, 28)) + '</span></td>'
-        + '<td>' + esc(d.exDate || '-') + '</td>'
-        + '<td>' + fmtPrice(d.amount) + '</td>'
-        + '<td class="vol">' + esc(d.frequency || '-') + '</td>'
-        + '</tr>';
-    }
-    divsHtml += '</table></div>';
+  function divRow(d: Dividend): string {
+    var yieldStr = d.yield != null ? d.yield.toFixed(2) + '%' : '-';
+    return '<tr>'
+      + '<td class="sym">' + esc(d.symbol) + '</td>'
+      + '<td>' + esc(d.exDate || '-') + '</td>'
+      + '<td class="g">' + fmtPrice(d.amount) + '</td>'
+      + '<td class="dim">' + esc(yieldStr) + '</td>'
+      + '</tr>';
   }
+
+  var gainersHtml = gainers.map(function(m) { return moverRow(m, true); }).join('');
+  var losersHtml = losers.map(function(m) { return moverRow(m, false); }).join('');
+  var iposHtml = ipos.slice(0, 12).map(ipoRow).join('');
+  var divsHtml = dividends.slice(0, 12).map(divRow).join('');
 
   var html = '<!DOCTYPE html>\n'
     + '<html lang="en">\n<head>\n'
     + '<meta charset="utf-8">\n'
     + '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
     + '<meta http-equiv="refresh" content="300">\n'
-    + '<title>Financial Monitor - TV</title>\n'
+    + '<title>WORLD MONITOR // FINANCIAL</title>\n'
     + '<style>\n'
-    + '* { margin:0; padding:0; box-sizing:border-box; }\n'
-    + 'body { background:#020617; color:#e2e8f0; font-family:-apple-system,Helvetica,Arial,sans-serif; padding:20px 28px; overflow-x:hidden; }\n'
-    + '.hdr { display:-webkit-flex; display:flex; -webkit-justify-content:space-between; justify-content:space-between; -webkit-align-items:center; align-items:center; padding:10px 0 14px; border-bottom:2px solid #1e293b; margin-bottom:16px; }\n'
-    + '.htl { font-size:24px; font-weight:700; color:#f1f5f9; }\n'
-    + '.htm { font-size:13px; color:#64748b; }\n'
-    + '.dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; margin-right:6px; vertical-align:middle; }\n'
-    + '.grid { display:-webkit-flex; display:flex; -webkit-flex-wrap:wrap; flex-wrap:wrap; gap:16px; }\n'
-    + '.sec { -webkit-flex:1 1 300px; flex:1 1 300px; min-width:260px; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:14px; }\n'
-    + '.stl { font-size:15px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #1e293b; }\n'
-    + 'table { width:100%; border-collapse:collapse; font-size:13px; }\n'
-    + 'th { text-align:left; color:#64748b; font-weight:500; font-size:10px; text-transform:uppercase; letter-spacing:.5px; padding:3px 6px 6px; border-bottom:1px solid #1e293b; }\n'
-    + 'td { padding:5px 6px; border-bottom:1px solid rgba(15,23,42,.5); vertical-align:top; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }\n'
-    + 'tr:nth-child(even) { background:rgba(30,41,59,.3); }\n'
-    + '.sym { color:#60a5fa; font-weight:600; }\n'
-    + '.nm { color:#94a3b8; font-size:11px; }\n'
-    + '.up { color:#22c55e; font-weight:600; }\n'
-    + '.down { color:#ef4444; font-weight:600; }\n'
-    + '.vol { color:#64748b; font-size:12px; }\n'
-    + '.cap { color:#475569; font-size:12px; }\n'
-    + '.st-expected { color:#f59e0b; }\n'
-    + '.st-priced { color:#22c55e; }\n'
-    + '.st-filed { color:#64748b; }\n'
-    + '.st-withdrawn { color:#ef4444; text-decoration:line-through; }\n'
-    + '.ft { margin-top:16px; text-align:center; color:#334155; font-size:11px; }\n'
+
+    // Reset & base
+    + '*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }\n'
+    + 'html, body { height:100%; overflow:hidden; }\n'
+    + 'body {\n'
+    + '  background:#0a0a0a;\n'
+    + '  color:#a0a0a0;\n'
+    + '  font-family:\'SF Mono\',\'Monaco\',\'Cascadia Code\',\'Fira Code\',\'Consolas\',monospace;\n'
+    + '  font-size:12px;\n'
+    + '  line-height:1.5;\n'
+    + '  -webkit-font-smoothing:antialiased;\n'
+    + '}\n'
+
+    // Shimmer animation
+    + '@-webkit-keyframes shimmer {\n'
+    + '  0% { background-position:-200px 0; }\n'
+    + '  100% { background-position:200px 0; }\n'
+    + '}\n'
+    + '@keyframes shimmer {\n'
+    + '  0% { background-position:-200px 0; }\n'
+    + '  100% { background-position:200px 0; }\n'
+    + '}\n'
+
+    // Pulse animation for status dot
+    + '@-webkit-keyframes pulse {\n'
+    + '  0%, 100% { opacity:1; }\n'
+    + '  50% { opacity:0.4; }\n'
+    + '}\n'
+    + '@keyframes pulse {\n'
+    + '  0%, 100% { opacity:1; }\n'
+    + '  50% { opacity:0.4; }\n'
+    + '}\n'
+
+    // Header bar
+    + '.header {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-align-items:center; align-items:center;\n'
+    + '  -webkit-justify-content:space-between; justify-content:space-between;\n'
+    + '  height:40px;\n'
+    + '  background:#141414;\n'
+    + '  border-bottom:1px solid #2a2a2a;\n'
+    + '  padding:0 16px;\n'
+    + '}\n'
+    + '.header-left {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-align-items:center; align-items:center;\n'
+    + '  gap:10px;\n'
+    + '}\n'
+    + '.header-title {\n'
+    + '  color:#e0e0e0;\n'
+    + '  font-size:13px;\n'
+    + '  font-weight:600;\n'
+    + '  letter-spacing:2px;\n'
+    + '}\n'
+    + '.status-dot {\n'
+    + '  display:inline-block;\n'
+    + '  width:7px; height:7px;\n'
+    + '  border-radius:50%;\n'
+    + '  background:#4ade80;\n'
+    + '  box-shadow:0 0 6px rgba(74,222,128,0.5);\n'
+    + '  -webkit-animation:pulse 2s ease-in-out infinite;\n'
+    + '  animation:pulse 2s ease-in-out infinite;\n'
+    + '}\n'
+    + '.live-label {\n'
+    + '  color:#4ade80;\n'
+    + '  font-size:10px;\n'
+    + '  font-weight:600;\n'
+    + '  letter-spacing:1.5px;\n'
+    + '}\n'
+    + '.header-right {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-align-items:center; align-items:center;\n'
+    + '  gap:12px;\n'
+    + '}\n'
+    + '.header-time {\n'
+    + '  color:#707070;\n'
+    + '  font-size:11px;\n'
+    + '}\n'
+    + '.header-badge {\n'
+    + '  background:#1a1a2e;\n'
+    + '  color:#818cf8;\n'
+    + '  font-size:9px;\n'
+    + '  font-weight:600;\n'
+    + '  letter-spacing:1.5px;\n'
+    + '  padding:3px 8px;\n'
+    + '  border:1px solid #2a2a4a;\n'
+    + '}\n'
+
+    // Grid layout
+    + '.grid {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-flex-wrap:wrap; flex-wrap:wrap;\n'
+    + '  height:calc(100vh - 40px);\n'
+    + '  padding:8px;\n'
+    + '  gap:8px;\n'
+    + '}\n'
+    + '.panel {\n'
+    + '  -webkit-flex:1 1 calc(50% - 8px); flex:1 1 calc(50% - 8px);\n'
+    + '  min-width:300px;\n'
+    + '  max-height:calc(50vh - 28px);\n'
+    + '  background:#141414;\n'
+    + '  border:1px solid #2a2a2a;\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-flex-direction:column; flex-direction:column;\n'
+    + '  overflow:hidden;\n'
+    + '}\n'
+    + '.panel-header {\n'
+    + '  display:-webkit-flex; display:flex;\n'
+    + '  -webkit-align-items:center; align-items:center;\n'
+    + '  -webkit-justify-content:space-between; justify-content:space-between;\n'
+    + '  height:30px;\n'
+    + '  padding:0 12px;\n'
+    + '  background:#1a1a1a;\n'
+    + '  border-bottom:1px solid #2a2a2a;\n'
+    + '  -webkit-flex-shrink:0; flex-shrink:0;\n'
+    + '}\n'
+    + '.panel-label {\n'
+    + '  font-size:10px;\n'
+    + '  font-weight:600;\n'
+    + '  letter-spacing:2px;\n'
+    + '  color:#707070;\n'
+    + '}\n'
+    + '.panel-count {\n'
+    + '  font-size:9px;\n'
+    + '  color:#505050;\n'
+    + '}\n'
+    + '.panel-body {\n'
+    + '  -webkit-flex:1; flex:1;\n'
+    + '  overflow-y:auto;\n'
+    + '  padding:0;\n'
+    + '}\n'
+
+    // Scrollbar styling
+    + '.panel-body::-webkit-scrollbar { width:4px; }\n'
+    + '.panel-body::-webkit-scrollbar-track { background:#141414; }\n'
+    + '.panel-body::-webkit-scrollbar-thumb { background:#2a2a2a; }\n'
+
+    // Table
+    + 'table { width:100%; border-collapse:collapse; }\n'
+    + 'th {\n'
+    + '  text-align:left;\n'
+    + '  color:#505050;\n'
+    + '  font-weight:500;\n'
+    + '  font-size:9px;\n'
+    + '  text-transform:uppercase;\n'
+    + '  letter-spacing:1px;\n'
+    + '  padding:6px 10px;\n'
+    + '  border-bottom:1px solid #2a2a2a;\n'
+    + '  position:-webkit-sticky; position:sticky;\n'
+    + '  top:0;\n'
+    + '  background:#141414;\n'
+    + '  z-index:1;\n'
+    + '}\n'
+    + 'td {\n'
+    + '  padding:5px 10px;\n'
+    + '  border-bottom:1px solid #1a1a1a;\n'
+    + '  white-space:nowrap;\n'
+    + '  overflow:hidden;\n'
+    + '  text-overflow:ellipsis;\n'
+    + '  max-width:200px;\n'
+    + '  font-size:11px;\n'
+    + '}\n'
+    + 'tr:hover { background:#1a1a1a; }\n'
+
+    // Colors
+    + '.sym { color:#4ade80; font-weight:600; }\n'
+    + '.nm { color:#606060; font-size:10px; }\n'
+    + '.g { color:#4ade80; font-weight:600; }\n'
+    + '.r { color:#ef4444; font-weight:600; }\n'
+    + '.dim { color:#505050; }\n'
+
+    // Badges
+    + '.badge {\n'
+    + '  display:inline-block;\n'
+    + '  font-size:8px;\n'
+    + '  font-weight:600;\n'
+    + '  letter-spacing:1px;\n'
+    + '  padding:2px 6px;\n'
+    + '  border:1px solid;\n'
+    + '}\n'
+    + '.badge-g { color:#4ade80; border-color:#0f5040; background:rgba(74,222,128,0.08); }\n'
+    + '.badge-y { color:#fbbf24; border-color:#6b5b00; background:rgba(251,191,36,0.08); }\n'
+    + '.badge-r { color:#ef4444; border-color:#5c1a1a; background:rgba(239,68,68,0.08); }\n'
+    + '.badge-d { color:#505050; border-color:#2a2a2a; background:rgba(80,80,80,0.05); }\n'
+
     + '</style>\n</head>\n<body>\n\n'
 
-    + '<div class="hdr">\n'
-    + '  <div><span style="font-size:22px">&#x1F4CA;</span> <span class="htl">Financial Events Monitor</span></div>\n'
-    + '  <div class="htm"><span class="dot"></span>Updated: ' + esc(lastUpdated) + ' ET</div>\n'
+    // Header bar
+    + '<div class="header">\n'
+    + '  <div class="header-left">\n'
+    + '    <span class="header-title">WORLD MONITOR</span>\n'
+    + '    <span class="status-dot"></span>\n'
+    + '    <span class="live-label">LIVE</span>\n'
+    + '  </div>\n'
+    + '  <div class="header-right">\n'
+    + '    <span class="header-time" id="clock">--:--:--</span>\n'
+    + '    <span class="header-badge">FINANCIAL</span>\n'
+    + '  </div>\n'
     + '</div>\n\n'
 
+    // Grid
     + '<div class="grid">\n\n'
 
-    // Gainers
-    + '<div class="sec">\n'
-    + '  <div class="stl" style="color:#22c55e">&#x1F4C8; Top Gainers</div>\n'
-    + '  <table><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Vol</th><th>MCap</th></tr>\n'
+    // TOP GAINERS
+    + '<div class="panel">\n'
+    + '  <div class="panel-header">\n'
+    + '    <span class="panel-label" style="color:#4ade80">TOP GAINERS</span>\n'
+    + '    <span class="panel-count">' + gainers.length + ' ITEMS</span>\n'
+    + '  </div>\n'
+    + '  <div class="panel-body">\n'
+    + '    <table>\n'
+    + '      <tr><th>SYM</th><th>NAME</th><th>CHANGE</th><th>PRICE</th><th>VOL</th></tr>\n'
     + gainersHtml
-    + '  </table>\n</div>\n\n'
+    + '    </table>\n'
+    + '  </div>\n'
+    + '</div>\n\n'
 
-    // Losers
-    + '<div class="sec">\n'
-    + '  <div class="stl" style="color:#ef4444">&#x1F4C9; Top Losers</div>\n'
-    + '  <table><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Vol</th><th>MCap</th></tr>\n'
+    // TOP LOSERS
+    + '<div class="panel">\n'
+    + '  <div class="panel-header">\n'
+    + '    <span class="panel-label" style="color:#ef4444">TOP LOSERS</span>\n'
+    + '    <span class="panel-count">' + losers.length + ' ITEMS</span>\n'
+    + '  </div>\n'
+    + '  <div class="panel-body">\n'
+    + '    <table>\n'
+    + '      <tr><th>SYM</th><th>NAME</th><th>CHANGE</th><th>PRICE</th><th>VOL</th></tr>\n'
     + losersHtml
-    + '  </table>\n</div>\n\n'
+    + '    </table>\n'
+    + '  </div>\n'
+    + '</div>\n\n'
 
-    // IPOs
-    + '<div class="sec">\n'
-    + '  <div class="stl" style="color:#a78bfa">&#x1F680; IPO Calendar</div>\n'
-    + '  <table><tr><th>Symbol</th><th>Date</th><th>Price</th><th>Exchange</th><th>Status</th></tr>\n'
+    // IPO CALENDAR
+    + '<div class="panel">\n'
+    + '  <div class="panel-header">\n'
+    + '    <span class="panel-label" style="color:#818cf8">IPO CALENDAR</span>\n'
+    + '    <span class="panel-count">' + Math.min(ipos.length, 12) + ' ITEMS</span>\n'
+    + '  </div>\n'
+    + '  <div class="panel-body">\n'
+    + '    <table>\n'
+    + '      <tr><th>SYM</th><th>COMPANY</th><th>DATE</th><th>STATUS</th></tr>\n'
     + iposHtml
-    + '  </table>\n</div>\n\n'
+    + '    </table>\n'
+    + '  </div>\n'
+    + '</div>\n\n'
 
-    // Dividends (if any)
+    // DIVIDENDS
+    + '<div class="panel">\n'
+    + '  <div class="panel-header">\n'
+    + '    <span class="panel-label" style="color:#fbbf24">DIVIDENDS</span>\n'
+    + '    <span class="panel-count">' + Math.min(dividends.length, 12) + ' ITEMS</span>\n'
+    + '  </div>\n'
+    + '  <div class="panel-body">\n'
+    + '    <table>\n'
+    + '      <tr><th>SYM</th><th>EX-DATE</th><th>AMOUNT</th><th>YIELD</th></tr>\n'
     + divsHtml
+    + '    </table>\n'
+    + '  </div>\n'
+    + '</div>\n\n'
 
     + '</div>\n\n'
 
-    + '<div class="ft">Auto-refresh 5 min &bull; TV Mode &bull; monitor.qualiaai.fr/tv</div>\n\n'
-
+    // ES5-compatible clock + auto-refresh
     + '<script>\n'
     + '(function(){\n'
-    + '  try {\n'
-    + '    setTimeout(function(){ window.location.reload(); }, 300000);\n'
-    + '  } catch(e) {}\n'
+    + '  function updateClock() {\n'
+    + '    var now = new Date();\n'
+    + '    var h = now.getHours();\n'
+    + '    var m = now.getMinutes();\n'
+    + '    var s = now.getSeconds();\n'
+    + '    var hh = h < 10 ? "0" + h : "" + h;\n'
+    + '    var mm = m < 10 ? "0" + m : "" + m;\n'
+    + '    var ss = s < 10 ? "0" + s : "" + s;\n'
+    + '    var el = document.getElementById("clock");\n'
+    + '    if (el) { el.textContent = hh + ":" + mm + ":" + ss; }\n'
+    + '  }\n'
+    + '  updateClock();\n'
+    + '  setInterval(updateClock, 1000);\n'
+    + '  setTimeout(function(){ window.location.reload(); }, 300000);\n'
     + '})();\n'
     + '</script>\n\n'
 
